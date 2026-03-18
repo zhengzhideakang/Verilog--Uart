@@ -3,7 +3,7 @@
  * @Email        : xuxiaokang_up@qq.com
  * @Date         : 2022-05-03 20:12:16
  * @LastEditors  : Xu Xiaokang
- * @LastEditTime : 2024-09-20 23:02:00
+ * @LastEditTime : 2025-12-14 00:41:34
  * @Filename     :
  * @Description  :
 */
@@ -160,8 +160,8 @@ assign sample_point = uart_rdata_period_clk_cnt == UART_RDATA_SAMPLE_POINT; // �
 always @(posedge clk) begin
   rdata <= rdata;
   case (1'b1)
-    state[0]:  rdata <= 'd0;
-    state[1]:  rdata <= 'd0;
+    state[0]:  ;
+    state[1]:  ;
     state[2]:  if (sample_point)
                   rdata <= {uart_rx_r2, rdata[DATA_BITS - 1 : 1]} ; // 新接收的放到最高位, 然后依次右移, 最先接收的为最低位
     state[3]:  ;
@@ -269,7 +269,7 @@ always @(posedge clk) begin
     state[1]:  ;
     state[2]:  ;
     state[3]:  ;
-    state[4]:  if (clk_cnt == STOP_BIT_CLK_CNT_MAX || uart_rx_begin) rdata_valid <= 1'b1; // 停止位接收数据有效
+    state[4]:  if (clk_cnt == STOP_BIT_HALF || uart_rx_begin) rdata_valid <= 1'b1; // 停止位计数到一半接收数据有效
     default: ;
   endcase
 end
