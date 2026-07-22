@@ -3,7 +3,7 @@
  * @Email        : XudaKang_up@qq.com
  * @Date         : 2022-05-05 11:11:22
  * @LastEditors  : Xu Xiaokang
- * @LastEditTime : 2026-07-21 22:30:27
+ * @LastEditTime : 2026-06-12 00:12:20
  * @Filename     : uartDriver.v
  * @Description  : UART驱动, 包括发送和接收
 */
@@ -21,9 +21,7 @@ module uartDriver
   parameter PARITY    = "NONE",     // 校验，可选"NONE"(默认), "ODD", "EVEN", "MARK", "SPACE"
   parameter STOP_BITS = "1"   ,     // 停止位宽度，可选"1"(默认), "1.5", "2"
   parameter integer BAUD_INIT_VALUE = 115200, // 初始波特率 115200
-  parameter integer TX_CLK_FREQ_MHZ = 100,    // 时钟频率(MHz)，默认100
-  parameter [0:0]   UART_RX_INPUT_TWO_STAGE_REG_EN = 1, // urat_rx输入二级寄存使能, 默认1表示使能
-  parameter integer RX_CLK_FREQ_MHZ = 200     // 时钟频率(MHz)，默认100
+  parameter integer CLK_FREQ_MHZ = 100    // 时钟频率(MHz)，默认100
 )(
   input  wire [15:0]            clk_freq_div_baud, // 时钟频率与波特率的比值
 
@@ -31,21 +29,20 @@ module uartDriver
   input  wire [DATA_BITS-1 : 0] uart_tx_data,      // 要发送的数据
   output wire                   uart_tx_is_busy,   // 指示发送正在进行
   output wire                   uart_tx_end,       // 指示单次发送完成，仅持续一个clk周期
-  input  wire                   uart_tx_clk,
-  input  wire                   uart_tx_rstn,
 
   output wire [DATA_BITS-1 : 0] uart_rx_data,       // 接收到的数据
   output wire                   uart_rx_data_valid, // 接收完成脉冲
   output wire                   uart_rx_is_busy,    // 接收正在进行
   output wire                   uart_rx_parity_err, // 奇偶校验错误
-  input  wire                   uart_rx_clk,
-  input  wire                   uart_rx_rstn,
 
   output wire uart_tx_485_de, // 发送过程指示信号, 用于485这种半双工通信的发送使能
 
   //~ 硬线连接
   output wire uart_tx,
-  input  wire uart_rx
+  input  wire uart_rx,
+
+  input  wire clk,
+  input  wire rstn
 );
 
 
@@ -56,37 +53,36 @@ uartTx #(
   .PARITY           (PARITY           ),
   .STOP_BITS        (STOP_BITS        ),
   .BAUD_INIT_VALUE  (BAUD_INIT_VALUE  ),
-  .CLK_FREQ_MHZ     (TX_CLK_FREQ_MHZ  )
+  .CLK_FREQ_MHZ     (CLK_FREQ_MHZ     )
 ) uartTx_inst (
-  .clk_freq_div_baud (clk_freq_div_baud ),
-  .uart_tx_begin     (uart_tx_begin     ),
-  .uart_tx_data      (uart_tx_data      ),
-  .uart_tx_is_busy   (uart_tx_is_busy   ),
-  .uart_tx_end       (uart_tx_end       ),
-  .uart_tx           (uart_tx           ),
-  .clk               (uart_tx_clk       ),
-  .rstn              (uart_tx_rstn      )
+  .clk_freq_div_baud(clk_freq_div_baud),
+  .uart_tx_begin    (uart_tx_begin    ),
+  .uart_tx_data     (uart_tx_data     ),
+  .uart_tx_is_busy  (uart_tx_is_busy  ),
+  .uart_tx_end      (uart_tx_end      ),
+  .uart_tx          (uart_tx          ),
+  .clk              (clk              ),
+  .rstn             (rstn             )
 );
 //-- 实例化串口发送模块 ------------------------------------------------------------
 
 
 //++ 实例化串口接收模块 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 uartRx #(
-  .UART_RX_INPUT_TWO_STAGE_REG_EN (UART_RX_INPUT_TWO_STAGE_REG_EN ),
-  .DATA_BITS_EXT_EN               (DATA_BITS_EXT_EN               ),
-  .DATA_BITS                      (DATA_BITS                      ),
-  .PARITY                         (PARITY                         ),
-  .BAUD_INIT_VALUE                (BAUD_INIT_VALUE                ),
-  .CLK_FREQ_MHZ                   (RX_CLK_FREQ_MHZ                )
+  .DATA_BITS_EXT_EN (DATA_BITS_EXT_EN ),
+  .DATA_BITS        (DATA_BITS        ),
+  .PARITY           (PARITY           ),
+  .BAUD_INIT_VALUE  (BAUD_INIT_VALUE  ),
+  .CLK_FREQ_MHZ     (CLK_FREQ_MHZ     )
 ) uartRx_inst (
-  .clk_freq_div_baud  (clk_freq_div_baud  ),
-  .uart_rx_data       (uart_rx_data       ),
-  .uart_rx_data_valid (uart_rx_data_valid ),
-  .uart_rx_is_busy    (uart_rx_is_busy    ),
-  .uart_rx_parity_err (uart_rx_parity_err ),
-  .uart_rx            (uart_rx            ),
-  .clk                (uart_rx_clk        ),
-  .rstn               (uart_rx_rstn       )
+  .clk_freq_div_baud (clk_freq_div_baud ),
+  .uart_rx_data      (uart_rx_data      ),
+  .uart_rx_data_valid(uart_rx_data_valid),
+  .uart_rx_is_busy   (uart_rx_is_busy   ),
+  .uart_rx_parity_err(uart_rx_parity_err),
+  .uart_rx           (uart_rx           ),
+  .clk               (clk               ),
+  .rstn              (rstn              )
 );
 //-- 实例化串口接收模块 ------------------------------------------------------------
 

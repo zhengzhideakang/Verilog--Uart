@@ -3,7 +3,7 @@
  * @Email        : xuxiaokang_up@qq.com
  * @Date         : 2022-05-03 20:12:16
  * @LastEditors  : Xu Xiaokang
- * @LastEditTime : 2026-07-22 16:41:35
+ * @LastEditTime : 2026-07-21 15:49:54
  * @Filename     :
  * @Description  :
 */
@@ -26,7 +26,6 @@
 
 module uartRx
 #(
-  parameter [0:0] UART_RX_INPUT_TWO_STAGE_REG_EN = 1, // urat_rx输入二级寄存使能, 默认1表示使能
   parameter [0:0] DATA_BITS_EXT_EN = 0, // 数据位宽扩展使能, 1使能, 此时位宽[4, 64]; 0不使能, 位宽[5, 8]
   parameter integer DATA_BITS = 8,  // 数据位宽度，可选5, 6, 7, 8(默认), 或扩展4~64
   parameter PARITY    = "NONE",     // 校验，可选"NONE"(默认), "ODD", "EVEN", "MARK", "SPACE"
@@ -47,7 +46,7 @@ module uartRx
   output reg                    uart_rx_parity_err, // 奇偶校验错误
 
   // 硬线连接
-  input  wire uart_rx, // 串行输入
+  input  wire uart_rx,           // 串行输入
 
   // 时钟与复位
   input  wire clk,
@@ -61,8 +60,8 @@ localparam CLK_FREQ_DIV_BAUD_INIT_VALUE = CLK_FREQ_MHZ * 1000 * 1000 / BAUD_INIT
 initial begin
   if (CLK_FREQ_MHZ < 10 || CLK_FREQ_MHZ > 300)
     $error("10 <= CLK_FREQ_MHZ must <= 300");
-  if (CLK_FREQ_DIV_BAUD_INIT_VALUE < 4 || CLK_FREQ_DIV_BAUD_INIT_VALUE >= 2**16)
-    $error("(CLK_FREQ_MHZ * 1000 * 1000 / BAUD_INIT_VALUE) must >= 4 and <= 2**16");
+  if (CLK_FREQ_DIV_BAUD_INIT_VALUE < 1 || CLK_FREQ_DIV_BAUD_INIT_VALUE >= 2**16)
+    $error("(CLK_FREQ_MHZ * 1000 * 1000 / BAUD_INIT_VALUE) must >= 1 and <= 2**16");
   // 检查数据位
   if (DATA_BITS_EXT_EN == 0 && (DATA_BITS < 5 || DATA_BITS > 8))
     $error("DATA_BITS_EXT_EN == 0, DATA_BITS must be 5, 6, 7, or 8");
@@ -76,29 +75,16 @@ end
 
 
 //++ 输入同步与边沿检测 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-wire this_rx_begin;
-wire this_rx_data_wait_sample; // 本模块使能的被采样的数据
-generate
-if (UART_RX_INPUT_TWO_STAGE_REG_EN) begin
-  reg uart_rx_r1;
-  reg uart_rx_r2;
-  reg uart_rx_r3;
-  always @(posedge clk) begin
-    uart_rx_r1 <= uart_rx;
-    uart_rx_r2 <= uart_rx_r1;
-    uart_rx_r3 <= uart_rx_r2;
-  end
-  assign this_rx_begin = ~uart_rx_r2;
-  assign this_rx_data_wait_sample = uart_rx_r3; // 此数据与状态机对齐, 使得采样点总是在数据中心
-end else begin
-  reg uart_rx_r1;
-  always @(posedge clk) begin
-    uart_rx_r1 <= uart_rx;
-  end
-  assign this_rx_begin = ~uart_rx;
-  assign this_rx_data_wait_sample = uart_rx_r1;
+(* mark_debug = "true" *)reg uart_rx_r1;
+(* mark_debug = "true" *)reg uart_rx_r2;
+(* mark_debug = "true" *)reg uart_rx_r3;
+always @(posedge clk) begin
+  uart_rx_r1 <= uart_rx;
+  uart_rx_r2 <= uart_rx_r1;
+  uart_rx_r3 <= uart_rx_r2;
 end
-endgenerate
+
+(* mark_debug = "true" *)wire this_rx_begin = ~uart_rx_r2 && uart_rx_r3;
 //-- 输入同步与边沿检测 ---------------------------------------------------------
 
 
@@ -110,8 +96,8 @@ localparam PARITY_BIT = 5'd1 << 3;
 localparam STOP_BIT   = 5'd1 << 4;
 
 localparam STATE_WIDTH = 5;
-(* mark_debug = "false" *)reg [STATE_WIDTH-1:0] state;
-(* mark_debug = "false" *)reg [STATE_WIDTH-1:0] next;
+(* mark_debug = "true" *)reg [STATE_WIDTH-1:0] state;
+(* mark_debug = "true" *)reg [STATE_WIDTH-1:0] next;
 
 always @(posedge clk) begin
   if (~rstn)
@@ -123,12 +109,12 @@ end
 
 
 //++ 状态机转移逻辑 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-(* mark_debug = "false" *)wire sample_point;  // 采样点脉冲（在每位中间）
-(* mark_debug = "false" *)wire start_bit_end ;
-(* mark_debug = "false" *)wire data_bit_end  ;
-(* mark_debug = "false" *)wire parity_bit_end;
-(* mark_debug = "false" *)wire stop_bit_end  ;
-(* mark_debug = "false" *)wire stop_bit_ahead_end; // 停止期间, 未计数完成, 下一个开始位就来了
+(* mark_debug = "true" *)wire sample_point;  // 采样点脉冲（在每位中间）
+(* mark_debug = "true" *)wire start_bit_end ;
+(* mark_debug = "true" *)wire data_bit_end  ;
+(* mark_debug = "true" *)wire parity_bit_end;
+(* mark_debug = "true" *)wire stop_bit_end  ;
+(* mark_debug = "true" *)wire stop_bit_ahead_end; // 停止期间, 未计数完成, 下一个开始位就来了
 
 always @(*) begin
   next = state;
@@ -138,7 +124,7 @@ always @(*) begin
         next = START_BIT;
     START_BIT:
       // 在起始位中间采样，若为高则视为噪声，返回IDLE
-      if (sample_point && this_rx_data_wait_sample) // 采样点为高，无效起始位
+      if (sample_point && uart_rx_r2) // 采样点为高，无效起始位
         next = IDLE;
       else if (start_bit_end) //
         next = DATA_BIT;
@@ -149,13 +135,8 @@ always @(*) begin
       if (parity_bit_end)
         next = STOP_BIT;
     STOP_BIT:
-      if (stop_bit_end)
-        if (this_rx_begin)
-          next = START_BIT;
-        else
-          next = IDLE;
-      else if (stop_bit_ahead_end)
-        next = START_BIT;
+      if (stop_bit_end || stop_bit_ahead_end)
+        next = IDLE;
     default: next = IDLE;
   endcase
 end
@@ -163,7 +144,7 @@ end
 
 
 //++ 位内计数器及采样点 +++++++++++++++++++++++++++++++++++++++++++++++++++++++
-(* mark_debug = "false" *)reg [15:0] one_bit_clk_cnt_max; // 位时钟计数最大值, 复位时幅初始值, 而在发送开始时刻, 更新新值
+(* mark_debug = "true" *)reg [15:0] one_bit_clk_cnt_max; // 位时钟计数最大值, 复位时幅初始值, 而在发送开始时刻, 更新新值
 always @(posedge clk) begin
   if (~rstn)
     one_bit_clk_cnt_max <= CLK_FREQ_DIV_BAUD_INIT_VALUE - 1'b1;
@@ -176,7 +157,7 @@ always @(posedge clk) begin
     endcase
 end
 
-(* mark_debug = "false" *)reg [15:0] one_bit_clk_cnt; // 当前位内部的时钟计数
+(* mark_debug = "true" *)reg [15:0] one_bit_clk_cnt; // 当前位内部的时钟计数
 always @(posedge clk) begin
   case (state)
     IDLE:
@@ -192,7 +173,7 @@ end
 
 // 采样点：在 one_bit_clk_cnt 等于 (clk_freq_div_baud_locked >> 1) 时产生（即接近中间位置）
 // 注：右移一位相当于除以2，若 clk_freq_div_baud_locked 为奇数，采样点略偏左，但误差在允许范围内
-(* mark_debug = "false" *)wire [15:0] half_point = one_bit_clk_cnt_max >> 1;
+(* mark_debug = "true" *)wire [15:0] half_point = one_bit_clk_cnt_max >> 1;
 assign sample_point = (state != IDLE) && (one_bit_clk_cnt == half_point);
 //-- 位内计数器及采样点 ---------------------------------------------------------
 
@@ -207,7 +188,7 @@ assign start_bit_end = state == START_BIT && one_bit_clk_cnt == one_bit_clk_cnt_
 
 
 //++ 生成数据位结束信号 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-(* mark_debug = "false" *)reg [$clog2(DATA_BITS)-1:0] data_bit_cnt;  // 已发送的数据位计数
+(* mark_debug = "true" *)reg [$clog2(DATA_BITS)-1:0] data_bit_cnt;  // 已发送的数据位计数
 always @(posedge clk) begin
   case (state)
     IDLE:
@@ -228,13 +209,13 @@ assign data_bit_end = data_bit_cnt == DATA_BITS - 1'b1
 
 
 //++ 数据位计数及移位寄存器 +++++++++++++++++++++++++++++++++++++++++++++++++++
-(* mark_debug = "false" *)reg [DATA_BITS-1:0] rx_data_shift_reg;  // 移位寄存器，LSB first
+(* mark_debug = "true" *)reg [DATA_BITS-1:0] rx_data_shift_reg;  // 移位寄存器，LSB first
 
 always @(posedge clk) begin
   case (state)
     DATA_BIT:
       if (sample_point)
-        rx_data_shift_reg <= {this_rx_data_wait_sample, rx_data_shift_reg[DATA_BITS-1:1]}; // LSB first，新位存入最高位
+        rx_data_shift_reg <= {uart_rx_r2, rx_data_shift_reg[DATA_BITS-1:1]}; // LSB first，新位存入最高位
     default: ;
   endcase
 end
@@ -242,7 +223,7 @@ end
 
 
 //++ 校验位计算 与生成校验位信号 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-(* mark_debug = "false" *)reg parity_calculated; // 根据数据和校验方式计算出的期望校验位
+(* mark_debug = "true" *)reg parity_calculated; // 根据数据和校验方式计算出的期望校验位
 
 generate
 if (PARITY == "ODD") begin
@@ -278,7 +259,7 @@ assign parity_bit_end = state == PARITY_BIT && one_bit_clk_cnt == one_bit_clk_cn
 assign stop_bit_end = state == STOP_BIT && one_bit_clk_cnt == one_bit_clk_cnt_max;
 assign stop_bit_ahead_end = state == STOP_BIT
                           && (one_bit_clk_cnt >= (one_bit_clk_cnt_max >> 1))
-                          && this_rx_begin
+                          && ~uart_rx_r2
                           ;
 //-- 生成停止位结束信号 ------------------------------------------------------------
 
@@ -321,7 +302,7 @@ if (PARITY != "NONE") begin
     case (state)
       PARITY_BIT:
         if (sample_point)
-          sampled_parity <= this_rx_data_wait_sample;
+          sampled_parity <= uart_rx_r2;
       default: ;
     endcase
   end

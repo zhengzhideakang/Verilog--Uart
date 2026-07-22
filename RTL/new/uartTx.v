@@ -3,7 +3,7 @@
  * @Email        : XudaKang_up@qq.com
  * @Date         : 2022-04-22 11:01:56
  * @LastEditors  : Xu Xiaokang
- * @LastEditTime : 2026-03-18 00:39:31
+ * @LastEditTime : 2026-07-21 17:10:48
  * @Filename     : uartTx.v
  * @Description  : UART 发送器，支持在线更改波特率及多种停止位宽度
 */
@@ -26,11 +26,12 @@
 
 module uartTx
 #(
-  parameter integer CLK_FREQ_MHZ    = 100,    // 时钟频率(MHz)，默认100
-  parameter integer BUAD_INIT_VALUE = 115200, // 初始波特率 115200
-  parameter integer DATA_BITS = 8,      // 数据位宽度，可选5, 6, 7, 8(默认)
-  parameter PARITY    = "NONE", // 校验，可选"NONE"(默认), "ODD", "EVEN", "MARK", "SPACE"
-  parameter STOP_BITS = "1"     // 停止位宽度，可选"1"(默认), "1.5", "2"
+  parameter [0:0] DATA_BITS_EXT_EN = 0, // 数据位宽扩展使能, 1使能, 此时位宽[4, 64]; 0不使能, 位宽[5, 8]
+  parameter integer DATA_BITS = 8,  // 数据位宽度，可选5, 6, 7, 8(默认), 或扩展4~64
+  parameter PARITY    = "NONE",     // 校验，可选"NONE"(默认), "ODD", "EVEN", "MARK", "SPACE"
+  parameter STOP_BITS = "1"   ,     // 停止位宽度，可选"1"(默认), "1.5", "2"
+  parameter integer BAUD_INIT_VALUE = 115200, // 初始波特率 115200
+  parameter integer CLK_FREQ_MHZ = 100    // 时钟频率(MHz)，默认100
 )(
   // FPGA发送数据与波特率控制接口
   /*
@@ -56,17 +57,19 @@ module uartTx
 
 
 //++ 参数合法性检查 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-localparam CLK_FREQ_DIV_BAUD_INIT_VALUE = CLK_FREQ_MHZ * 1000 * 1000 / BUAD_INIT_VALUE;
+localparam CLK_FREQ_DIV_BAUD_INIT_VALUE = CLK_FREQ_MHZ * 1000 * 1000 / BAUD_INIT_VALUE;
 
 initial begin
   if (CLK_FREQ_MHZ < 10 || CLK_FREQ_MHZ > 300)
     $error("10 <= CLK_FREQ_MHZ must <= 300");
   // 检查波特率初始值
-  if (CLK_FREQ_DIV_BAUD_INIT_VALUE < 1)
-    $error("CLK_FREQ_DIV_BAUD_INIT_VALUE must >= 1");
+  if (CLK_FREQ_DIV_BAUD_INIT_VALUE < 1 || CLK_FREQ_DIV_BAUD_INIT_VALUE >= 2**16)
+    $error("(CLK_FREQ_MHZ * 1000 * 1000 / BAUD_INIT_VALUE) must >= 1 and <= 2**16");
   // 检查数据位
-  if (DATA_BITS < 5 || DATA_BITS > 8)
-    $error("DATA_BITS must be 5, 6, 7, or 8");
+  if (DATA_BITS_EXT_EN == 0 && (DATA_BITS < 5 || DATA_BITS > 8))
+    $error("DATA_BITS_EXT_EN == 0, DATA_BITS must be 5, 6, 7, or 8");
+  if (DATA_BITS_EXT_EN == 1 && (DATA_BITS < 4 || DATA_BITS > 64))
+    $error("DATA_BITS_EXT_EN == 1, DATA_BITS must be [4, 64]");
   // 检查校验位
   if (PARITY != "NONE"
       && PARITY != "ODD"
@@ -91,7 +94,7 @@ end
 wire uart_tx_begin_pedge = uart_tx_begin && ~uart_tx_begin_r1;
 
 // 锁存当前帧要发送的数据
-(* mark_debug *)reg [DATA_BITS-1 : 0] uart_tx_data_locked;
+(* mark_debug = "false" *)reg [DATA_BITS-1 : 0] uart_tx_data_locked;
 always @(posedge clk) begin
   if (uart_tx_begin_pedge)
     uart_tx_data_locked <= uart_tx_data;
@@ -100,7 +103,7 @@ always @(posedge clk) begin
 end
 
 // 真实的发送开始信号（仅当空闲且检测到上升沿时有效）
-(* mark_debug *)wire this_tx_begin = ~uart_tx_is_busy && uart_tx_begin_pedge;
+(* mark_debug = "false" *)wire this_tx_begin = ~uart_tx_is_busy && uart_tx_begin_pedge;
 //-- 输入寄存与信号预处理 ------------------------------------------------------------
 
 //++ 三段式状态机-状态定义 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -112,8 +115,8 @@ localparam PARITY_BIT = 5'd1 << 3;
 localparam STOP_BIT   = 5'd1 << 4;
 
 localparam STATE_WIDTH = 5;
-(* mark_debug *)reg [STATE_WIDTH-1:0] state;
-(* mark_debug *)reg [STATE_WIDTH-1:0] next;
+(* mark_debug = "false" *)reg [STATE_WIDTH-1:0] state;
+(* mark_debug = "false" *)reg [STATE_WIDTH-1:0] next;
 
 always @(posedge clk) begin
   if (~rstn)
@@ -125,10 +128,10 @@ end
 
 
 //++ 三段式状态机-状态跳转 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-(* mark_debug *)wire start_bit_end ;
-(* mark_debug *)wire data_bit_end  ;
-(* mark_debug *)wire parity_bit_end;
-(* mark_debug *)wire stop_bit_end  ;
+(* mark_debug = "false" *)wire start_bit_end ;
+(* mark_debug = "false" *)wire data_bit_end  ;
+(* mark_debug = "false" *)wire parity_bit_end;
+(* mark_debug = "false" *)wire stop_bit_end  ;
 
 always @(*) begin
   next = state;
@@ -155,7 +158,7 @@ end
 
 
 //++ 位时钟计数器 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-(* mark_debug *)reg [15:0] one_bit_clk_cnt_max; // 位时钟计数最大值, 复位时幅初始值, 而在发送开始时刻, 更新新值
+(* mark_debug = "false" *)reg [15:0] one_bit_clk_cnt_max; // 位时钟计数最大值, 复位时幅初始值, 而在发送开始时刻, 更新新值
 always @(posedge clk) begin
   if (~rstn)
     one_bit_clk_cnt_max <= CLK_FREQ_DIV_BAUD_INIT_VALUE - 1'b1;
@@ -168,7 +171,7 @@ always @(posedge clk) begin
     endcase
 end
 
-(* mark_debug *)reg [15:0] one_bit_clk_cnt; // 当前位内部的时钟计数
+(* mark_debug = "false" *)reg [15:0] one_bit_clk_cnt; // 当前位内部的时钟计数
 always @(posedge clk) begin
   case (state)
     IDLE:
@@ -194,19 +197,22 @@ assign start_bit_end = state == START_BIT && one_bit_clk_cnt == one_bit_clk_cnt_
 
 
 //++ 生成数据位结束信号 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-(* mark_debug *)reg [2:0] data_bit_cnt;  // 已发送的数据位计数
+(* mark_debug = "false" *)reg [$clog2(DATA_BITS)-1:0] data_bit_cnt; // 已发送的数据位计数
 always @(posedge clk) begin
   case (state)
     IDLE:
       data_bit_cnt <= 'd0;
     DATA_BIT:
-      if (one_bit_clk_cnt == one_bit_clk_cnt_max)
+      if ((data_bit_cnt < DATA_BITS - 1'b1)
+          && (one_bit_clk_cnt == one_bit_clk_cnt_max)
+          )
         data_bit_cnt <= data_bit_cnt + 1'b1;
     default: ;
   endcase
 end
 
-assign data_bit_end = data_bit_cnt == DATA_BITS - 1'b1
+assign data_bit_end = state == DATA_BIT
+                      && data_bit_cnt == DATA_BITS - 1'b1
                       && one_bit_clk_cnt == one_bit_clk_cnt_max
                       ;
 //-- 生成数据位结束信号 ------------------------------------------------------------
@@ -257,7 +263,7 @@ endgenerate
 
 
 //++ 生成奇偶校验位 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-(* mark_debug *)wire parity_value;
+(* mark_debug = "false" *)wire parity_value;
 
 generate
 if (PARITY == "ODD") begin  // 奇校验: 数据+校验位中1的个数为奇数, 即数据位中1数量为奇数时, 校验位为0; 否则为0
@@ -276,7 +282,7 @@ endgenerate
 
 
 //++ uart_tx引脚赋值 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-(* mark_debug *)wire tx_data_bit = uart_tx_data_locked[data_bit_cnt];
+(* mark_debug = "false" *)wire tx_data_bit = uart_tx_data_locked[data_bit_cnt];
 always @(posedge clk) begin
   uart_tx <= 1'b1; // IDLE 和 STOP_BIT 均保持高电平
   case (state)

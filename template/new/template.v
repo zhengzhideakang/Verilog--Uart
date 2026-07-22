@@ -3,50 +3,63 @@
  * @Email        :
  * @Date         : 2026-03-15 02:46:04
  * @LastEditors  : Xu Xiaokang
- * @LastEditTime : 2026-03-18 23:54:31
+ * @LastEditTime : 2026-07-21 23:03:21
  * @Filename     :
  * @Description  :
 */
 
 
 //++ 实例化UART驱动 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-localparam BUAD_INIT_VALUE = 115200; // 初始波特率, 默认 115200
-localparam DATA_BITS       = 8     ; // 数据位宽度，可选5, 6, 7, 8(默认)
-localparam PARITY          = "NONE"; // 校验，可选"NONE"(默认), "ODD", "EVEN", "MARK", "SPACE"
-localparam STOP_BITS       = "1"   ; // 停止位宽度，可选"1"(默认), "1.5", "2"
+localparam integer DATA_BITS = 33; // 发送FIFO数据位宽, 目前是1+16+8+8=33
+localparam integer BAUD_INIT_VALUE = CLK_FREQ_MHZ * 1000 * 1000 / CLK_FREQ_DIV_UART_BUAD;
+localparam TX_CLK_FREQ_MHZ = CLK_FREQ_MHZ;
+localparam RX_CLK_FREQ_MHZ = 200;
 
-wire [15:0] clk_freq_div_baud;
-wire uart_tx_begin;
-wire [DATA_BITS-1:0] uart_tx_data;
-wire uart_tx_is_busy;
-wire uart_tx_end;
+// 发送信号
+(* mark_debug = "true" *)reg [DATA_BITS-1 : 0] uart_tx_data;
+(* mark_debug = "true" *)reg                   uart_tx_begin;
+(* mark_debug = "true" *)wire uart_tx_is_busy;
+wire uart_tx_clk  = clk ;
+wire uart_tx_rstn = rstn;
+
+// 接收信号
 wire [DATA_BITS-1:0] uart_rx_data;
-wire uart_rx_data_valid;
-wire uart_rx_is_busy;
-wire uart_rx_parity_err;
-wire uart_tx_485_de;
+wire                 uart_rx_data_valid;
+(* mark_debug = "true" *)wire uart_rx_is_busy;
+wire uart_rx_clk  = clk_200m ;
+wire uart_rx_rstn = rstn     ;
+
+// 发送与接收引脚
+(* mark_debug = "true" *)wire uart_tx;
+// 因为发送方发送的时候, 接收方可能还没准备好, 所以这里需要对接收的原理bit流进行处理, 正确的识别出开始位
+wire uart_rx_bit_aligned;
 
 uartDriver #(
-  .CLK_FREQ_MHZ    (CLK_FREQ_MHZ    ),
-  .BUAD_INIT_VALUE (BUAD_INIT_VALUE ),
-  .DATA_BITS       (DATA_BITS       ),
-  .PARITY          (PARITY          ),
-  .STOP_BITS       (STOP_BITS       )
+  .DATA_BITS_EXT_EN               (1               ),
+  .DATA_BITS                      (DATA_BITS       ),
+  .PARITY                         (                ),
+  .STOP_BITS                      (                ),
+  .BAUD_INIT_VALUE                (BAUD_INIT_VALUE ),
+  .TX_CLK_FREQ_MHZ                (TX_CLK_FREQ_MHZ ),
+  .UART_RX_INPUT_TWO_STAGE_REG_EN (0               ),
+  .RX_CLK_FREQ_MHZ                (RX_CLK_FREQ_MHZ )
 ) uartDriver_inst (
-  .clk_freq_div_baud  (clk_freq_div_baud  ),
-  .uart_tx_begin      (uart_tx_begin      ),
-  .uart_tx_data       (uart_tx_data       ),
-  .uart_tx_is_busy    (uart_tx_is_busy    ),
-  .uart_tx_end        (uart_tx_end        ),
-  .uart_rx_data       (uart_rx_data       ),
-  .uart_rx_data_valid (uart_rx_data_valid ),
-  .uart_rx_is_busy    (uart_rx_is_busy    ),
-  .uart_rx_parity_err (uart_rx_parity_err ),
-  .uart_tx_485_de     (uart_tx_485_de     ),
-  .uart_tx            (fpga_uart_tx       ),
-  .uart_rx            (fpga_uart_rx       ),
-  .clk                (clk                ),
-  .rstn               (rstn               )
+  .clk_freq_div_baud  (0                 ),
+  .uart_tx_begin      (uart_tx_begin     ),
+  .uart_tx_data       (uart_tx_data      ),
+  .uart_tx_is_busy    (uart_tx_is_busy   ),
+  .uart_tx_end        (                  ),
+  .uart_tx_clk        (uart_tx_clk       ),
+  .uart_tx_rstn       (uart_tx_rstn      ),
+  .uart_rx_data       (uart_rx_data      ),
+  .uart_rx_data_valid (uart_rx_data_valid),
+  .uart_rx_is_busy    (uart_rx_is_busy   ),
+  .uart_rx_parity_err (                  ),
+  .uart_rx_clk        (uart_rx_clk       ),
+  .uart_rx_rstn       (uart_rx_rstn      ),
+  .uart_tx_485_de     (                  ),
+  .uart_tx(uart_tx),
+  .uart_rx(uart_rx_bit_aligned)
 );
 //-- 实例化UART驱动 ------------------------------------------------------------
 
